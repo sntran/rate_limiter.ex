@@ -169,12 +169,58 @@ defmodule RateLimiterTest do
       assert_receive(
         {:trace_ts, ^pid, :receive, {:process, ^queue_name}, timestamp3}, 
         1100,
-        "message 2 should be processed"
+        "message 3 should be processed"
       )
 
       duration = :erlang.convert_time_unit(timestamp3 - timestamp2, :native, :millisecond)
       assert (duration >= 1000 and duration < 1005), "message 3 should be processed after 1000ms, not #{duration}ms"
 
+    end
+
+    test "should process new message after being empty following current schedule", context do
+      pid = context[:pid]
+      :erlang.trace(pid, true, [:receive, :monotonic_timestamp])
+
+      queue_name = "queue"
+
+      assert :ok = RateLimiter.enqueue({1, queue_name})
+      assert_receive(
+        {:trace_ts, ^pid, :receive, {:process, ^queue_name}, timestamp1}, 
+        100, 
+        "message 1 should be processed"
+      )
+      # Wait half a second.
+      Process.sleep(500)
+      assert :ok = RateLimiter.enqueue({2, queue_name})
+      assert_receive(
+        {:trace_ts, ^pid, :receive, {:process, ^queue_name}, timestamp2}, 
+        1100,
+        "message 2 should be processed"
+      )
+
+      duration = :erlang.convert_time_unit(timestamp2 - timestamp1, :native, :millisecond)
+      assert (duration >= 1000 and duration < 1005), "message 2 should be processed after 1000ms, not #{duration}ms"
+
+      # Wait more than 1s so that the queue should be empty and past the first schedule run.
+      Process.sleep(1500)
+      assert :ok = RateLimiter.enqueue({3, queue_name})
+      assert_receive(
+        {:trace_ts, ^pid, :receive, {:process, ^queue_name}, timestamp3}, 
+        1100,
+        "should still be called for empty queue"
+      )
+      
+      duration = :erlang.convert_time_unit(timestamp3 - timestamp2, :native, :millisecond)
+      assert (duration >= 1000 and duration < 1005), "schedule should still run after 1000ms, not #{duration}ms"
+      
+      assert_receive(
+        {:trace_ts, ^pid, :receive, {:process, ^queue_name}, timestamp4}, 
+        1100,
+        "message 3 should be processed"
+      )
+
+      duration = :erlang.convert_time_unit(timestamp4 - timestamp3, :native, :millisecond)
+      assert (duration >= 1000 and duration < 1005), "message 3 should be processed after 1000ms, not #{duration}ms"
     end
   end
 end

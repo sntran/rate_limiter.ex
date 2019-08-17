@@ -54,7 +54,7 @@ defmodule RateLimiter do
     case GenServer.start_link(__MODULE__, options, name: __MODULE__) do
       {:error, {:already_started, pid}} -> {:ok, pid}
       other -> other
-  end
+    end
   end
 
   @doc """
@@ -92,11 +92,18 @@ defmodule RateLimiter do
 
   @impl GenServer
   def handle_info({:process, queue_name}, %{queues: queues} = state) do
-    queue = Map.get(queues, queue_name)
-    {{:value, message}, queue} = :queue.out(queue)
+    queue = queues
+    |> Map.get(queue_name)
+    |> :queue.out()
+    |> case do
+      {{:value, message}, queue} ->
+        process(message, queue_name)
+        queue
+      {:empty, queue} ->
+        queue
+    end
 
-    process(message, queue_name)
-
+    # @TODO: Use the time specified in options.
     schedule_queue(queue_name, 1 * 1000)
 
     queues = Map.put(queues, queue_name, queue)
