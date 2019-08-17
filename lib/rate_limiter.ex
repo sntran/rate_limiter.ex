@@ -51,7 +51,10 @@ defmodule RateLimiter do
   """
   @spec start_link(Keyword.t()) :: {:ok, pid()}
   def start_link(options \\ []) do
-    GenServer.start_link(__MODULE__, options, name: __MODULE__)
+    case GenServer.start_link(__MODULE__, options, name: __MODULE__) do
+      {:error, {:already_started, pid}} -> {:ok, pid}
+      other -> other
+  end
   end
 
   @doc """

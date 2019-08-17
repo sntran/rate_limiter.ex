@@ -15,6 +15,11 @@ defmodule RateLimiterTest do
       assert Process.whereis(RateLimiter) === pid
     end
 
+    test "is a singleton" do
+      {:ok, pid} = RateLimiter.start_link()
+      assert {:ok, ^pid} = RateLimiter.start_link()
+    end
+
     test "takes a keyword list for options" do
       assert {:ok, pid} = RateLimiter.start_link([])
     end
