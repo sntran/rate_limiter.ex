@@ -72,7 +72,18 @@ defmodule RateLimiter do
   def handle_cast({:in, message, queue_name}, state) do
     queue = Map.get(state, queue_name, :queue.new())
     queue = :queue.in(message, queue)
-    state = Map.put(state, queue_name, queue)
-    {:noreply, state}
+    {:noreply, Map.put(state, queue_name, queue)}
+  end
+
+  @impl GenServer
+  def handle_info({:process, queue_name}, state) do
+    queue = Map.get(state, queue_name)
+    {{:value, message}, queue} = :queue.out(queue)
+
+    if is_function(message) do
+      message.()
+    end
+
+    {:noreply, Map.put(state, queue_name, queue)}
   end
 end

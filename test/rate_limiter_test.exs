@@ -55,4 +55,40 @@ defmodule RateLimiterTest do
       assert {[2], [1]} = state[queue], "should have the message in the queue"
     end
   end
+
+  describe "handle_info({:process, queue}, state)" do
+    setup do
+      Process.register(self(), :tester)
+
+      on_exit(fn -> 
+        :ok
+      end)
+
+      :ok
+    end
+
+    test "should removes the item at the front of the queue" do
+      queue = "queue"
+      {:noreply, state} = RateLimiter.handle_cast( {:in, 1, queue}, %{})
+      {:noreply, state} = RateLimiter.handle_cast( {:in, 2, queue},state)
+
+      assert {:noreply, state} = RateLimiter.handle_info({:process, queue}, state)
+      assert {[], [2]} = state[queue], "should not have the first message in the queue"
+
+      assert {:noreply, state} = RateLimiter.handle_info({:process, queue}, state)
+      assert {[], []} = state[queue], "should not have the second message in the queue"
+    end
+
+    test "should execute the message if it is a function" do
+      queue = "queue"
+      worker = fn() ->
+        Kernel.send(:tester, {:process, queue})
+      end
+
+      {:noreply, state} = RateLimiter.handle_cast( {:in, worker, queue}, %{})
+      {:noreply, _state} = RateLimiter.handle_info({:process, queue}, state)
+
+      assert_received {:process, ^queue}, "worker should be executed"
+    end
+  end
 end
