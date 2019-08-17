@@ -9,6 +9,7 @@ defmodule RateLimiter.Application do
     children = [
       # Starts a worker by calling: RateLimiter.Worker.start_link(arg)
       # {RateLimiter.Worker, arg}
+      {Plug.Cowboy, scheme: :http, plug: RateLimiter.Router, options: [port: 4000]}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
