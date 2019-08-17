@@ -24,13 +24,6 @@ defmodule RateLimiterTest do
     end
   end
 
-  describe "enqueue" do
-    test "should cast the request with no reply" do
-      {:ok, _pid} = RateLimiter.start_link()
-      assert :ok = RateLimiter.enqueue({"message", "queue"})
-    end
-  end
-
   describe "init/1" do
     @describetag :init
 
@@ -98,7 +91,7 @@ defmodule RateLimiterTest do
     test "should execute the message if it is a function" do
       {:ok, state} = RateLimiter.init([])
       queue = "queue"
-      message = fn() ->
+      message = fn(_queue_name) ->
         Kernel.send(:tester, {:process, queue})
       end
 
@@ -106,6 +99,77 @@ defmodule RateLimiterTest do
       {:noreply, _state} = RateLimiter.handle_info({:process, queue}, state)
 
       assert_received {:process, ^queue}, "message should be executed"
+    end
+  end
+
+  describe "enqueue" do
+    setup do
+      Process.register(self(), :tester)
+      {:ok, pid} = RateLimiter.start_link()
+
+      on_exit(fn -> 
+        :ok
+      end)
+
+      [pid: pid]
+    end
+
+    test "should cast the request with no reply" do
+      assert :ok = RateLimiter.enqueue({"message", "queue"})
+    end
+
+    test "should process the initial message immediately", context do
+      pid = context[:pid]
+      :erlang.trace(pid, true, [:receive, :monotonic_timestamp])
+
+      queue_name = "queue"
+
+      now = :erlang.monotonic_time()
+      assert :ok = RateLimiter.enqueue({"message", queue_name})
+      assert_receive(
+        {:trace_ts, ^pid, :receive, {:process, ^queue_name}, timestamp}, 
+        100, 
+        "message should be processed"
+      )
+
+      duration = :erlang.convert_time_unit(timestamp - now, :native, :millisecond)
+      assert (duration >= 0 and duration <= 1), "message should be processed immediately, not after #{duration}ms"
+    end
+
+    test "should schedule next messages in 1s interval", context do
+      pid = context[:pid]
+      :erlang.trace(pid, true, [:receive, :monotonic_timestamp])
+
+      queue_name = "queue"
+
+      # Enqueue consecutives messages.
+      assert :ok = RateLimiter.enqueue({1, queue_name})
+      assert :ok = RateLimiter.enqueue({2, queue_name})
+      assert :ok = RateLimiter.enqueue({3, queue_name})
+
+      assert_receive(
+        {:trace_ts, ^pid, :receive, {:process, ^queue_name}, timestamp1}, 
+        100, 
+        "message 1 should be processed"
+      )
+      assert_receive(
+        {:trace_ts, ^pid, :receive, {:process, ^queue_name}, timestamp2}, 
+        1100,
+        "message 2 should be processed"
+      )
+
+      duration = :erlang.convert_time_unit(timestamp2 - timestamp1, :native, :millisecond)
+      assert (duration >= 1000 and duration < 1005), "message 2 should be processed after 1000ms, not #{duration}ms"
+    
+      assert_receive(
+        {:trace_ts, ^pid, :receive, {:process, ^queue_name}, timestamp3}, 
+        1100,
+        "message 2 should be processed"
+      )
+
+      duration = :erlang.convert_time_unit(timestamp3 - timestamp2, :native, :millisecond)
+      assert (duration >= 1000 and duration < 1005), "message 3 should be processed after 1000ms, not #{duration}ms"
+
     end
   end
 end

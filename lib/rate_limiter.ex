@@ -62,9 +62,9 @@ defmodule RateLimiter do
   The message will be placed in a queue with specified name, or new queue if it
   does not exist yet.
   """
-  @spec enqueue({String.t(), String.t()}) :: :ok
-  def enqueue({_message, _queue} = request) do
-    GenServer.cast(__MODULE__, request)
+  @spec enqueue({String.t() | function(), String.t()}) :: :ok
+  def enqueue({message, queue}) do
+    GenServer.cast(__MODULE__, {:in, message, queue})
   end
 
   # Callbacks
@@ -76,9 +76,13 @@ defmodule RateLimiter do
 
   @impl GenServer
   def handle_cast({:in, message, queue_name}, %{queues: queues} = state) do
-    queue = Map.get(queues, queue_name, :queue.new())
-    queue = :queue.in(message, queue)
+    queue = Map.get(queues, queue_name)
 
+    if (is_nil(queue)) do
+      schedule_queue(queue_name)
+    end
+
+    queue = :queue.in(message, queue || :queue.new())
     queues = Map.put(queues, queue_name, queue)
     {:noreply, Map.put(state, :queues, queues)}
   end
@@ -88,11 +92,23 @@ defmodule RateLimiter do
     queue = Map.get(queues, queue_name)
     {{:value, message}, queue} = :queue.out(queue)
 
-    if is_function(message) do
-      message.()
-    end
+    process(message, queue_name)
+
+    schedule_queue(queue_name, 1 * 1000)
 
     queues = Map.put(queues, queue_name, queue)
     {:noreply, Map.put(state, :queues, queues)}
+  end
+
+  defp schedule_queue(queue_name, time \\ 0) do
+    Process.send_after(self(), {:process, queue_name}, time)
+  end
+
+  defp process(message, queue_name) when is_function(message) do
+    message.(queue_name)
+  end
+
+  defp process(_message, _queue_name) do
+    :ok
   end
 end
