@@ -29,6 +29,10 @@ defmodule RateLimiter do
 
   use GenServer
 
+  defstruct queues: %{}, options: []
+
+  @type t :: %__MODULE__{}
+
   @doc """
   Starts a `RateLimiter` worker linked to the current process.
 
@@ -45,8 +49,9 @@ defmodule RateLimiter do
       true
 
   """
-  def start_link() do
-    GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
+  @spec start_link(Keyword.t()) :: {:ok, pid()}
+  def start_link(options \\ []) do
+    GenServer.start_link(__MODULE__, options, name: __MODULE__)
   end
 
   @doc """
@@ -57,6 +62,7 @@ defmodule RateLimiter do
   The message will be placed in a queue with specified name, or new queue if it
   does not exist yet.
   """
+  @spec enqueue({String.t(), String.t()}) :: :ok
   def enqueue({_message, _queue} = request) do
     GenServer.cast(__MODULE__, request)
   end
@@ -64,26 +70,29 @@ defmodule RateLimiter do
   # Callbacks
 
   @impl GenServer
-  def init(_) do
-    {:ok, %{}}
+  def init(options) do
+    {:ok, %__MODULE__{options: options, queues: %{}}}
   end
 
   @impl GenServer
-  def handle_cast({:in, message, queue_name}, state) do
-    queue = Map.get(state, queue_name, :queue.new())
+  def handle_cast({:in, message, queue_name}, %{queues: queues} = state) do
+    queue = Map.get(queues, queue_name, :queue.new())
     queue = :queue.in(message, queue)
-    {:noreply, Map.put(state, queue_name, queue)}
+
+    queues = Map.put(queues, queue_name, queue)
+    {:noreply, Map.put(state, :queues, queues)}
   end
 
   @impl GenServer
-  def handle_info({:process, queue_name}, state) do
-    queue = Map.get(state, queue_name)
+  def handle_info({:process, queue_name}, %{queues: queues} = state) do
+    queue = Map.get(queues, queue_name)
     {{:value, message}, queue} = :queue.out(queue)
 
     if is_function(message) do
       message.()
     end
 
-    {:noreply, Map.put(state, queue_name, queue)}
+    queues = Map.put(queues, queue_name, queue)
+    {:noreply, Map.put(state, :queues, queues)}
   end
 end
