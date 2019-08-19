@@ -92,6 +92,9 @@ defmodule RateLimiter do
 
   @impl GenServer
   def handle_info({:process, queue_name}, %{queues: queues} = state) do
+    # @TODO: Use the time specified in options.
+    schedule_queue(queue_name, 1 * 1000)
+
     queue = queues
     |> Map.get(queue_name)
     |> :queue.out()
@@ -103,15 +106,13 @@ defmodule RateLimiter do
         queue
     end
 
-    # @TODO: Use the time specified in options.
-    schedule_queue(queue_name, 1 * 1000)
-
     queues = Map.put(queues, queue_name, queue)
     {:noreply, Map.put(state, :queues, queues)}
   end
 
   defp schedule_queue(queue_name, time \\ 0) do
-    Process.send_after(self(), {:process, queue_name}, time)
+    time = System.monotonic_time(:millisecond) + time
+    Process.send_after(self(), {:process, queue_name}, time, abs: true)
   end
 
   defp process(message, queue_name) when is_function(message) do
