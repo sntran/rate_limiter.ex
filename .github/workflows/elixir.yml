@@ -5,11 +5,7 @@ on: push
 jobs:
   build:
 
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macOS-latest, windows-latest]
-
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     container:
       image: elixir:1.9.1-slim
