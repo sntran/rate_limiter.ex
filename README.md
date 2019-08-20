@@ -1,5 +1,7 @@
 # RateLimiter
 
+[![Actions Status](https://github.com/sntran/rate_limiter.ex/workflows/Elixir/badge.svg)](https://github.com/sntran/rate_limiter.ex/actions)
+
 This Elixir application accepts messages via an HTTP endpoint and processes the messages in the order that they are received, and no more than one per second. The application should be able to handle multiple queues based on a parameter passed into the HTTP endpoint.
 
 1. [x] The application is a simple Plug based web server.
